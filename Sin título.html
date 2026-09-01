@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Generador Profesional de Situaciones de Aprendizaje (v5.8 Multi-AI)</title>
+    
+    <!-- CONFIGURACIÓN DE ICONO PARA DISPOSITIVOS MÓVILES (PWA) -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="EduSA Albanta">
+    <link rel="manifest" href="manifest.json">
+    
+    <link class="no-print" rel="apple-touch-icon" href="SituacionesLogo_3.png">
+    <link class="no-print" rel="icon" type="image/png" href="SituacionesLogo_3.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- LIBRERÍA PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    
+    <style>
+        *, *::before, *::after { box-sizing: border-box; }
+        
+        @media print {
+            .no-print { display: none !important; }
+        }
+        
+        .pdf-container {
+            font-family: 'Arial', sans-serif;
+            color: #1a202c;
+            background-color: #ffffff !important;
+        }
+
+        /* Fuerza la cohesión de bloques evitando saltos huérfanos o cortes de texto */
+        .sa-block, .session-card {
+            page-break-inside: avoid !important;
+            break-inside: avoid !important;
+            -webkit-column-break-inside: avoid !important;
+            margin-bottom: 12px;
+        }
+        
+        /* Clase limpia para desactivar bordes y sombras del contenedor durante la captura */
+        .pdf-render-mode {
+            padding: 0 !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            background: #ffffff !important;
+        }
+
+        /* Clase especial para omitir elementos específicos durante la generación del PDF */
+        .exclude-from-pdf {
+            display: none !important;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- CABECERA DE LA APLICACIÓN -->
+        <header class="mb-8 no-print border-b border-slate-200 pb-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div class="flex items-center space-x-4">
+                <!-- LOGO CABECERA -->
+                <img id="headerLogoImg" src="SituacionesLogo_3.png" alt="Colegio Albanta Logo" class="h-14 w-14 object-contain rounded-xl shadow-sm border border-slate-100">
+                <div>
+                    <h1 class="text-2xl font-extrabold text-indigo-700">EduSA Albanta v5.8</h1>
+                    <p class="text-slate-500 text-xs">Entorno Corporativo - Motor PDF v3 con Captura Nativa</p>
+                </div>
+            </div>
+            
+            <!-- CONTENEDOR DE BOTÓN DE INSTRUCCIONES E INDICADOR DE MOTOR -->
+            <div class="flex items-center gap-3">
+                <!-- BOTÓN DE INSTRUCCIONES -->
+                <button type="button" onclick="mostrarInstrucciones()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1.5 shadow-sm transition">
+                    <span>📖 Instrucciones y API Key</span>
+                </button>
+                
+                <div class="bg-indigo-50 border border-indigo-100 text-indigo-700 px-3 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5">
+                    <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span> Motor PDF v3 Activo
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            
+            <!-- PANEL DE CONFIGURACIÓN (IZQUIERDA) -->
+            <div class="lg:col-span-1 bg-white p-6 rounded-xl shadow-sm border border-slate-200 no-print h-fit space-y-6">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <span class="p-2 bg-indigo-50 text-indigo-600 rounded-lg font-bold text-sm">01</span>
+                        <h2 class="text-xl font-bold text-slate-800">Conexión Cloud AI</h2>
+                    </div>
+                    <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200 space-y-3">
+                        <div>
+                            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Proveedor de IA</label>
+                            <select id="aiProvider" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500" onchange="actualizarPlaceholderKey()">
+                                <option value="gemini" selected>Google Gemini API (Recomendado)</option>
+                                <option value="openai">OpenAI API</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">API Key Personal</label>
+                            <input type="password" id="apiKey" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-mono focus:ring-2 focus:ring-indigo-500 transition" placeholder="Introduce tu clave AIzaSy...">
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <input type="checkbox" id="useAI" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4" checked>
+                            <label for="useAI" class="text-xs font-medium text-slate-700 cursor-pointer">Activar desarrollo inteligente por IA</label>
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <span class="p-2 bg-indigo-50 text-indigo-600 rounded-lg font-bold text-sm">02</span>
+                        <h2 class="text-xl font-bold text-slate-800">Parámetros de la SA</h2>
+                    </div>
+                    
+                    <form id="saForm" onsubmit="procesarFormulario(event)">
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Etapa Educativa</label>
+                            <select id="etapa" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition" onchange="actualizarEtapa()" required>
+                                <option value="">Selecciona una etapa...</option>
+                                <option value="infantil">Educación Infantil</option>
+                                <option value="primaria">Educación Primaria</option>
+                                <option value="secundaria">Educación Secundaria (ESO)</option>
+                                <option value="bachillerato">Bachillerato</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Curso Específico</label>
+                            <select id="curso" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition" disabled required>
+                                <option value="">Primero selecciona una etapa...</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Materia / Área Curricular</label>
+                            <select id="materia" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition" disabled required>
+                                <option value="">Primero selecciona una etapa...</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Número de Sesiones</label>
+                            <select id="numSesiones" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition" required>
+                                <option value="3">3 Sesiones</option>
+                                <option value="4">4 Sesiones</option>
+                                <option value="5">5 Sesiones</option>
+                                <option value="6" selected>6 Sesiones</option>
+                                <option value="8">8 Sesiones</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Núcleo Temático / Proyecto</label>
+                            <input type="text" id="temaTexto" class="w-full p-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 transition" placeholder="Ej: Ecosistemas mediterráneos..." required>
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1">Documento de Apoyo (PDF)</label>
+                            <label class="flex flex-col items-center justify-center w-full h-16 border-2 border-slate-300 border-dashed rounded-lg cursor-pointer bg-slate-50 hover:bg-slate-100 transition">
+                                <div class="text-center px-2 py-1">
+                                    <p class="text-xs text-slate-500 font-medium" id="pdfStatusText">
+                                        <span class="font-semibold text-indigo-600">Subir PDF opcional</span>
+                                    </p>
+                                </div>
+                                <input id="pdfAdjunto" type="file" accept=".pdf" class="hidden" onchange="procesarPdfAdjunto()" />
+                            </label>
+                        </div>
+
+                        <div class="mb-6 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                            <label class="flex items-center space-x-2 cursor-pointer">
+                                <input type="checkbox" id="duaToggle" class="rounded text-indigo-600 focus:ring-indigo-500 h-4 w-4" checked>
+                                <span class="text-xs font-medium text-slate-700">Activar pautas DÚA LOMLOE</span>
+                            </label>
+                        </div>
+
+                        <button type="submit" id="btnSubmit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-lg transition shadow-sm flex justify-center items-center gap-2">
+                            <span>Generar Situación de Aprendizaje</span>
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- PANEL DE PREVISUALIZACIÓN Y TRABAJO (DERECHA) -->
+            <div class="lg:col-span-2">
+                <div class="flex justify-between items-center mb-4 no-print">
+                    <div class="flex items-center space-x-2">
+                        <span class="p-2 bg-emerald-50 text-emerald-600 rounded-lg font-bold text-sm">03</span>
+                        <h2 class="text-xl font-bold text-slate-800">Espacio de Trabajo / Previsualización</h2>
+                    </div>
+                    <button type="button" onclick="exportarPDF()" id="btnPdf" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2 px-4 rounded-lg transition shadow-sm hidden">
+                        <span>Descargar PDF Oficial</span>
+                    </button>
+                </div>
+
+                <!-- CONTENEDOR VISTA PREVIA -->
+                <div id="pdfWorkspace" class="bg-white p-8 rounded-xl shadow-sm border border-slate-200 pdf-container min-h-[650px] relative">
+                    
+                    <!-- SPINNER / PANTALLA DE CARGA IA -->
+                    <div id="aiLoading" class="hidden absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-8 no-pdf-target">
+                        <div class="animate-spin rounded-full h-14 w-14 border-4 border-slate-200 border-t-indigo-600 mb-4"></div>
+                        <h3 class="text-lg font-bold text-slate-800">Redactando contenido con Inteligencia Artificial...</h3>
+                        <p class="text-xs text-slate-500 max-w-sm mt-1">Estructurando la propuesta curricular. Por favor, espera unos segundos a que finalice el volcado técnico.</p>
+                    </div>
+
+                    <!-- LOGO MARCA DE AGUA -->
+                    <div id="placeholderText" class="text-slate-400 text-center py-20 flex flex-col items-center justify-center space-y-4 no-pdf-target">
+                        <img id="mainLogo" src="SituacionesLogo_3.png" alt="Colegio Albanta Logo Centrado" class="h-32 w-32 object-contain opacity-75">
+                        <div>
+                            <p class="text-base font-medium text-slate-600">Configure los parámetros curriculares en el panel izquierdo.</p>
+                            <p class="text-xs text-slate-400 mt-1">El motor de IA estructurará la ruta didáctica completa bajo normativa LOMLOE.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Contenido de la SA -->
+                    <div id="saContent" class="hidden">
+                        <!-- Cabecera de la Ficha -->
+                        <div class="border-b-4 border-emerald-600 pb-4 mb-6 flex justify-between items-start">
+                            <div>
+                                <span id="pdfEtapaMateria" class="text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded"></span>
+                                <h1 id="pdfTitulo" class="text-xl font-extrabold text-slate-900 mt-2"></h1>
+                            </div>
+                            <!-- LOGO INTERNO DEL PDF -->
+                            <img id="pdfLogo" src="SituacionesLogo_3.png" alt="Logo PDF" class="h-14 w-14 object-contain ml-4 border border-slate-100 rounded-xl p-0.5 pdf-logo-element">
+                        </div>
+
+                        <!-- Ficha Técnico-Pedagógica -->
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 grid grid-cols-2 gap-4 text-xs sa-block">
+                            <div><strong class="text-slate-600">Centro Educativo:</strong> <span class="text-slate-900 font-semibold">Colegio Albanta</span></div>
+                            <div><strong class="text-slate-600">Curso Escolar / Nivel:</strong> <span id="pdfCursoAsignado" class="text-slate-900 font-semibold"></span></div>
+                            <div><strong class="text-slate-600">Temporalización Real:</strong> <span id="pdfTemporalizacion" class="text-emerald-700 font-bold"></span></div>
+                            <div><strong class="text-slate-600">Marco Legal:</strong> <span class="text-slate-500 font-mono text-[10px]">LOMLOE / Real Decreto Estatal Vigente</span></div>
+                            <div class="col-span-2 border-t border-slate-200 pt-2" id="pdfDocumentoBox" style="display:none;"><strong class="text-indigo-700">Fichero de Contexto:</strong> <span id="pdfDocumentoNombre" class="text-slate-900 font-mono text-[10px]"></span></div>
+                            <div class="col-span-2 border-t border-slate-200 pt-2"><strong class="text-slate-600">Producto Final Evaluable:</strong> <span id="pdfProducto" class="text-slate-900 font-medium"></span></div>
+                        </div>
+
+                        <!-- Bloque 1: Justificación -->
+                        <div class="sa-block">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-2 bg-emerald-50/50 p-1.5 rounded border-l-4 border-emerald-600 pl-3">1. Justificación Pedagógica y Contextualización</h3>
+                            <p id="pdfJustificacion" class="text-slate-700 text-xs leading-relaxed text-justify mb-4"></p>
+                        </div>
+
+                        <!-- Bloque 2: Sesiones -->
+                        <div class="sa-block">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-3 bg-emerald-50/50 p-1.5 rounded border-l-4 border-emerald-600 pl-3">2. Secuenciación y Desarrollo Detallado de Sesiones</h3>
+                            <div id="pdfActividades" class="space-y-4"></div>
+                        </div>
+
+                        <!-- Bloque 3: Evaluación -->
+                        <div class="sa-block">
+                            <h3 class="text-xs font-bold uppercase tracking-wider text-emerald-800 mb-2 bg-emerald-50/50 p-1.5 rounded border-l-4 border-emerald-600 pl-3">3. Evaluación Formativa y Criterios de Logro</h3>
+                            <p id="pdfEvaluacion" class="text-slate-700 text-xs leading-relaxed text-justify mb-4"></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- VENTANA EMERGENTE (MODAL) DE INSTRUCCIONES -->
+    <div id="instructionsModal" class="hidden fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 transition-all duration-300">
+        <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-2xl w-full overflow-hidden transform scale-95 transition-transform duration-300 flex flex-col max-h-[90vh]">
+            <!-- Encabezado del Modal -->
+            <div class="bg-indigo-700 px-6 py-4 flex justify-between items-center text-white">
+                <div class="flex items-center gap-2">
+                    <span class="text-xl">📖</span>
+                    <h3 class="text-lg font-bold">Guía de Uso Completa y Configuración de API</h3>
+                </div>
+                <button onclick="cerrarInstrucciones()" class="text-white/80 hover:text-white transition text-2xl font-semibold focus:outline-none">&times;</button>
+            </div>
+            
+            <!-- Contenido del Modal con Scroll Interno -->
+            <div class="p-6 overflow-y-auto space-y-6 text-xs text-slate-700 leading-relaxed">
+                
+                <!-- SECCIÓN ESPECIAL: GOOGLE GEMINI API KEY -->
+                <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-3">
+                    <h4 class="font-bold text-sm text-indigo-900 flex items-center gap-1.5">
+                        <span>🔑</span> ¿Cómo crear gratis tu API Key de Google Gemini?
+                    </h4>
+                    <p class="text-indigo-950 font-medium">
+                        La API de Google Gemini es el motor de Inteligencia Artificial recomendado para esta herramienta debido a su alta velocidad y gran precisión curricular. Sigue estos pasos para obtener una clave gratuita en menos de 2 minutos:
+                    </p>
+                    <ol class="list-decimal list-inside space-y-1.5 pl-2 text-indigo-900 font-medium">
+                        <li>Accede al portal oficial de desarrolladores de Google: <a href="https://aistudio.google.com/" target="_blank" class="text-indigo-600 underline font-bold hover:text-indigo-800">Google AI Studio</a> e inicia sesión con tu cuenta de Google (Gmail).</li>
+                        <li>Haz clic en el botón azul de la esquina superior izquierda que dice <strong>"Get API Key"</strong> (Obtener clave de API).</li>
+                        <li>Pulsa sobre <strong>"Create API Key"</strong> (Crear clave de API).</li>
+                        <li>Selecciona la opción <strong>"Create API Key in new project"</strong> para generar tu clave exclusiva de manera segura.</li>
+                        <li>Copia la clave generada (empieza por <code class="bg-indigo-100 px-1 py-0.5 rounded font-mono text-[10px]">AIzaSy...</code>) y pégala en el panel izquierdo de esta aplicación.</li>
+                    </ol>
+                </div>
+
+                <!-- PASOS DE USO DE LA APLICACIÓN -->
+                <div class="space-y-4">
+                    <h4 class="font-bold text-sm text-slate-900 border-b border-slate-200 pb-1">Pasos para Generar una Situación de Aprendizaje (SA)</h4>
+                    
+                    <div class="space-y-1.5">
+                        <h5 class="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span class="bg-slate-200 text-slate-700 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold">1</span>
+                            Introduce la API Key
+                        </h5>
+                        <p class="pl-6">
+                            Pega tu clave en el campo "API Key Personal". Asegúrate de tener seleccionado el proveedor correcto (Gemini u OpenAI) en el menú superior del panel de conexión.
+                        </p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <h5 class="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span class="bg-slate-200 text-slate-700 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold">2</span>
+                            Elige los Parámetros Curriculares
+                        </h5>
+                        <p class="pl-6">
+                            Selecciona la etapa, el curso y la materia correspondientes. Los menús desplegables se adaptan dinámicamente según las directrices LOMLOE. Configura las sesiones e indica el núcleo temático (por ejemplo: "El ciclo del agua" o "Energías renovables").
+                        </p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <h5 class="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span class="bg-slate-200 text-slate-700 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold">3</span>
+                            Opciones DÚA e Inclusión (Opcional)
+                        </h5>
+                        <p class="pl-6">
+                            Mantén activa la casilla de verificación <strong>DÚA</strong> para que la Inteligencia Artificial incorpore medidas de inclusión y andamiaje cognitivo en cada sesión redactada. También puedes adjuntar un PDF de referencia como material de apoyo.
+                        </p>
+                    </div>
+
+                    <div class="space-y-1.5">
+                        <h5 class="font-bold text-slate-800 flex items-center gap-1.5">
+                            <span class="bg-slate-200 text-slate-700 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold">4</span>
+                            Generación y Exportación Directa
+                        </h5>
+                        <p class="pl-6">
+                            Haz clic en el botón <strong>"Generar Situación de Aprendizaje"</strong>. Tras unos segundos, la previsualización se actualizará con toda la estructura de sesiones y rúbricas. Finalmente, haz clic en el botón verde de la zona superior derecha para descargar tu documento oficial en PDF sin que se corte el contenido.
+                        </p>
+                    </div>
+                </div>
+
+                <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-[11px] text-amber-800">
+                    <strong>💡 Nota del Sistema:</strong> Si no tienes conexión a internet o no dispones de una clave API activa en este momento, puedes desmarcar la casilla de IA para generar una estructura técnica estándar al instante de manera offline.
+                </div>
+            </div>
+
+            <!-- Botón de Cierre -->
+            <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-100 flex justify-end">
+                <button onclick="cerrarInstrucciones()" class="bg-slate-800 hover:bg-slate-900 text-white font-semibold py-1.5 px-4 rounded-lg text-xs transition shadow-sm">
+                    Entendido, cerrar guía
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PROGRAMACIÓN CURRICULAR Y CONECTORES DE IA -->
+    <script>
+        const datosCurriculares = {
+            infantil: {
+                cursos: ["Primer Ciclo (0-3 años)", "1º de Educación Infantil (3 años)", "2º de Educación Infantil (4 años)", "3º de Educación Infantil (5 años)"],
+                materias: ["Crecimiento en Armonía", "Descubrimiento y Exploración del Entorno", "Comunicación y Representación de la Realidad"]
+            },
+            primaria: {
+                cursos: ["1º de Educación Primaria", "2º de Educación Primaria", "3º de Educación Primaria", "4º de Educación Primaria", "5º de Educación Primaria", "6º de Educación Primaria"],
+                materias: ["Conocimiento del Medio Natural, Social y Cultural", "Educación Artística (Plástica y Musical)", "Educación Física", "Lengua Castellana y Literatura", "Lengua Extranjera (Inglés)", "Matemáticas", "Educación en Valores Cívicos y Éticos"]
+            },
+            secundaria: {
+                cursos: ["1º de la ESO", "2º de la ESO", "3º de la ESO", "4º de la ESO"],
+                materias: ["Biología y Geología", "Física y Química", "Geografía e Historia", "Lengua Castellana y Literatura", "Lengua Extranjera (Inglés)", "Matemáticas", "Educación Física", "Educación Plástica, Visual y Audiovisual", "Música", "Tecnología y Digitalización", "Educación en Valores Cívicos y Éticos", "Latín (4º ESO)"]
+            },
+            bachillerato: {
+                cursos: ["1º de Bachillerato (Ciencias)", "2º de Bachillerato (Ciencias)", "1º de Bachillerato (Humanidades y CCSS)", "2º de Bachillerato (Humanidades y CCSS)", "1º de Bachillerato (Artes/General)", "2º de Bachillerato (Artes/General)"],
+                materias: ["Lengua Castellana y Literatura (I y II)", "Filosofía / Historia de la Filosofía", "Historia de España", "Lengua Extranjera I y II (Inglés)", "Educación Física (1º)", "Matemáticas I y II", "Matemáticas Aplicadas a las CCSS I y II", "Biología, Geología y CC. Ambientales", "Física y Química / Física / Química", "Dibujo Técnico I y II", "Latín I y II / Griego I y II", "Economía, Emprendimiento y Act. Empresarial", "Historia del Mundo Contemporáneo", "Literatura Universal", "Tecnología e Ingeniería I y II"]
+            }
+        };
+
+        let documentoPdfCargado = null;
+
+        function mostrarInstrucciones() {
+            const modal = document.getElementById('instructionsModal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.firstElementChild.classList.remove('scale-95');
+                modal.firstElementChild.classList.add('scale-100');
+            }, 10);
+        }
+
+        function cerrarInstrucciones() {
+            const modal = document.getElementById('instructionsModal');
+            modal.firstElementChild.classList.remove('scale-100');
+            modal.firstElementChild.classList.add('scale-95');
+            setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 150);
+        }
+
+        function actualizarPlaceholderKey() {
+            const provider = document.getElementById('aiProvider').value;
+            const inputKey = document.getElementById('apiKey');
+            if(provider === 'gemini') {
+                inputKey.placeholder = "Introduce tu clave AIzaSy...";
+            } else {
+                inputKey.placeholder = "Introduce tu clave sk-...";
+            }
+        }
+
+        function procesarPdfAdjunto() {
+            const input = document.getElementById('pdfAdjunto');
+            const statusText = document.getElementById('pdfStatusText');
+            if (input.files && input.files[0]) {
+                documentoPdfCargado = { nombre: input.files[0].name };
+                statusText.innerHTML = `<span class="font-bold text-emerald-600">✔ PDF: ${input.files[0].name}</span>`;
+            }
+        }
+
+        function actualizarEtapa() {
+            const etapa = document.getElementById('etapa').value;
+            const selectCurso = document.getElementById('curso');
+            const selectMateria = document.getElementById('materia');
+            selectCurso.innerHTML = ''; selectMateria.innerHTML = '';
+            if (!etapa) { selectCurso.disabled = true; selectMateria.disabled = true; return; }
+            selectCurso.disabled = false; selectMateria.disabled = false;
+            datosCurriculares[etapa].cursos.forEach(c => { let opt = document.createElement('option'); opt.value = c; opt.textContent = c; selectCurso.appendChild(opt); });
+            datosCurriculares[etapa].materias.forEach(m => { let opt = document.createElement('option'); opt.value = m; opt.textContent = m; selectMateria.appendChild(opt); });
+        }
+
+        async function procesarFormulario(event) {
+            event.preventDefault();
+            const useAI = document.getElementById('useAI').checked;
+            const apiKey = document.getElementById('apiKey').value.trim();
+
+            if (useAI && !apiKey) {
+                alert("Por favor, introduce tu API Key válida o desmarca la casilla de IA.");
+                return;
+            }
+
+            document.getElementById('placeholderText').classList.add('hidden');
+            document.getElementById('saContent').classList.remove('hidden');
+            document.getElementById('btnPdf').classList.remove('hidden');
+
+            if (useAI) {
+                await ejecutarGeneracionIA(apiKey);
+            } else {
+                generarEstructuraEstatica();
+            }
+        }
+
+        async function ejecutarGeneracionIA(apiKey) {
+            const loader = document.getElementById('aiLoading');
+            loader.classList.remove('hidden');
+
+            const provider = document.getElementById('aiProvider').value;
+            const etapa = document.getElementById('etapa').options[document.getElementById('etapa').selectedIndex].text;
+            const curso = document.getElementById('curso').value;
+            const materia = document.getElementById('materia').value;
+            const numSesiones = parseInt(document.getElementById('numSesiones').value);
+            const tema = document.getElementById('temaTexto').value;
+            const duaActivo = document.getElementById('duaToggle').checked;
+
+            document.getElementById('pdfEtapaMateria').textContent = `${etapa} | ${materia}`;
+            document.getElementById('pdfTitulo').textContent = `Situación de Aprendizaje: Proyecto Competencial sobre "${tema}"`;
+            document.getElementById('pdfCursoAsignado').textContent = curso;
+            document.getElementById('pdfTemporalizacion').textContent = `${numSesiones} Sesiones`;
+            document.getElementById('pdfProducto').textContent = `Evidencia o producción final detallada sobre ${tema}`;
+            
+            if (documentoPdfCargado) {
+                document.getElementById('pdfDocumentoBox').style.display = 'block';
+                document.getElementById('pdfDocumentoNombre').textContent = documentoPdfCargado.nombre;
+            } else { document.getElementById('pdfDocumentoBox').style.display = 'none'; }
+
+            const promptContexto = `Actúa como un Diseñador Curricular experto de España especializado en la LOMLOE. 
+            Genera una Situación de Aprendizaje estructurada para el Colegio Albanta.
+            Parámetros:
+            - Etapa: ${etapa}
+            - Curso: ${curso}
+            - Materia: ${materia}
+            - Número de Sesiones: ${numSesiones}
+            - Tema: ${tema}
+            - Enfoque DÚA Activo: ${duaActivo ? 'SÍ' : 'NO'}
+            
+            Devuelve OBLIGATORIAMENTE un objeto JSON puro (sin bloques de código de markdown de apertura o cierre como \`\`\`json ni texto libre adicional) con el siguiente formato exacto:
+            {
+               "justificacion": "Texto formal de justificación...",
+               "evaluacion": "Criterios de evaluación aplicados...",
+               "sesiones": [
+                   {"num": 1, "titulo": "Título sesión 1", "desarrollo": "Desarrollo detallado de actividades paso a paso..."},
+                   ... hasta cumplir las ${numSesiones} sesiones
+               ]
+            }`;
+
+            try {
+                let resJson = null;
+
+                if (provider === 'openai') {
+                    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+                        body: JSON.stringify({
+                            model: "gpt-4o-mini",
+                            messages: [{ role: "user", content: promptContexto }],
+                            temperature: 0.7
+                        })
+                    });
+                    if (!response.ok) throw new Error("Error en la pasarela de OpenAI.");
+                    const data = await response.json();
+                    let rawContent = data.choices[0].message.content.trim();
+                    rawContent = rawContent.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+                    resJson = JSON.parse(rawContent);
+
+                } else {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            contents: [{ parts: [{ text: promptContexto }] }],
+                            generationConfig: {
+                                responseMimeType: "application/json",
+                                temperature: 0.7
+                            }
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errorData = await response.json().catch(() => ({}));
+                        const mensajeError = errorData.error?.message || "Verifica tu API Key o conexión.";
+                        throw new Error(`Error Gemini: ${mensajeError}`);
+                    }
+
+                    const data = await response.json();
+                    
+                    if (!data.candidates || !data.candidates[0]?.content?.parts[0]?.text) {
+                        throw new Error("La API no devolvió contenido válido. Revisa tu clave de API.");
+                    }
+
+                    const rawContent = data.candidates[0].content.parts[0].text.trim();
+                    resJson = JSON.parse(rawContent);
+                }
+
+                document.getElementById('pdfJustificacion').textContent = resJson.justificacion;
+                document.getElementById('pdfEvaluacion').textContent = resJson.evaluacion;
+
+                let actividadesHTML = "";
+                resJson.sesiones.forEach(s => {
+                    actividadesHTML += `
+                        <div class="p-3 bg-slate-50 rounded-lg border-l-4 border-indigo-600 shadow-sm space-y-1.5 session-card">
+                            <div class="flex justify-between items-center">
+                                <span class="text-xs font-bold text-indigo-900 uppercase tracking-wider">Sesión ${s.num}: ${s.titulo}</span>
+                                <span class="bg-indigo-100 text-indigo-700 text-[10px] font-semibold px-2 py-0.5 rounded-full">60 Min</span>
+                            </div>
+                            <p class="text-slate-700 text-xs leading-relaxed text-justify">${s.desarrollo}</p>
+                            ${duaActivo ? '<p class="text-emerald-700 text-[10px] font-medium italic">✔ Integración DÚA: Múltiples formatos de andamiaje y expresión validados.</p>' : ''}
+                        </div>
+                    `;
+                });
+                document.getElementById('pdfActividades').innerHTML = actividadesHTML;
+
+            } catch (err) {
+                alert("Error en la comunicación inteligente:\n" + err.message + "\n\nSe cargará la plantilla estática.");
+                generarEstructuraEstatica();
+            } finally {
+                loader.classList.add('hidden');
+            }
+        }
+
+        function generarEstructuraEstatica() {
+            const etapa = document.getElementById('etapa').options[document.getElementById('etapa').selectedIndex].text;
+            const curso = document.getElementById('curso').value;
+            const materia = document.getElementById('materia').value;
+            const numSesiones = parseInt(document.getElementById('numSesiones').value);
+            const tema = document.getElementById('temaTexto').value;
+
+            document.getElementById('pdfEtapaMateria').textContent = `${etapa} | ${materia}`;
+            document.getElementById('pdfTitulo').textContent = `Situación de Aprendizaje: Proyecto Competencial sobre "${tema}"`;
+            document.getElementById('pdfCursoAsignado').textContent = curso;
+            document.getElementById('pdfTemporalizacion').textContent = `${numSesiones} Sesiones`;
+            document.getElementById('pdfProducto').textContent = `Porfolio técnico y exposición final sobre ${tema}.`;
+            document.getElementById('pdfJustificacion').textContent = `Estructura por defecto asignada para el nivel de ${curso} en el Colegio Albanta adaptada al marco LOMLOE de la materia de ${materia}.`;
+            
+            let actividadesHTML = "";
+            for (let i = 1; i <= numSesiones; i++) {
+                actividadesHTML += `
+                    <div class="p-3 bg-slate-50 rounded-lg border-l-4 border-emerald-600 shadow-sm session-card">
+                        <span class="text-xs font-bold text-emerald-800 uppercase tracking-wider">Sesión ${i}: Desarrollo de Unidad Didáctica</span>
+                        <p class="text-slate-700 text-xs mt-1">Actividades procedimentales planteadas de forma cooperativa para trabajar los conceptos clave de ${tema}.</p>
+                    </div>
+                `;
+            }
+            document.getElementById('pdfActividades').innerHTML = actividadesHTML;
+            document.getElementById('pdfEvaluacion').textContent = "Evaluación formativa continua basada en rúbricas ligadas a las competencias específicas de la materia.";
+        }
+
+        async function exportarPDF() {
+            const btn = document.getElementById('btnPdf');
+            const loader = document.getElementById('aiLoading');
+            const placeholder = document.getElementById('placeholderText');
+            const element = document.getElementById('pdfWorkspace');
+
+            if (!element) return;
+
+            btn.disabled = true;
+            btn.innerHTML = "<span>Compilando PDF...</span>";
+
+            element.classList.add('pdf-render-mode');
+            if (loader) loader.classList.add('exclude-from-pdf');
+            if (placeholder) placeholder.classList.add('exclude-from-pdf');
+
+            const titulo = document.getElementById('pdfTitulo').textContent || 'situacion_de_aprendizaje';
+            const nombreArchivo = titulo.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.pdf';
+
+            // SVG seguro del logo para reemplazar imágenes locales sin provocar fallo de seguridad
+            const logoSvgFallback = `
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="h-14 w-14 ml-4">
+                    <circle cx="50" cy="50" r="45" fill="#f0fdf4" stroke="#059669" stroke-width="3"/>
+                    <path d="M50 20 A 25 25 0 0 1 75 45 A 25 25 0 0 1 50 70 A 25 25 0 0 1 25 45 Z" fill="none" stroke="#047857" stroke-width="5"/>
+                    <text x="50" y="85" font-size="8" font-family="sans-serif" font-weight="bold" text-anchor="middle" fill="#065f46">ALBANTA</text>
+                </svg>`;
+
+            const opciones = {
+                margin: [10, 10, 10, 10],
+                filename: nombreArchivo,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true,
+                    allowTaint: true,
+                    logging: false,
+                    onclone: (clonedDoc) => {
+                        // Sustituye las imágenes locales por elementos vectoriales durante la captura si se ejecuta mediante file://
+                        if (window.location.protocol === 'file:') {
+                            const clonedLogo = clonedDoc.getElementById('pdfLogo');
+                            if (clonedLogo) {
+                                const wrapper = clonedDoc.createElement('div');
+                                wrapper.innerHTML = logoSvgFallback;
+                                clonedLogo.parentNode.replaceChild(wrapper.firstElementChild, clonedLogo);
+                            }
+                        }
+                    }
+                },
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
+                pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
+            };
+
+            try {
+                await html2pdf().set(opciones).from(element).save();
+            } catch (error) {
+                alert("Atención al exportar PDF: " + error.message);
+                console.error(error);
+            } finally {
+                element.classList.remove('pdf-render-mode');
+                if (loader) loader.classList.remove('exclude-from-pdf');
+                if (placeholder) placeholder.classList.remove('exclude-from-pdf');
+                
+                btn.disabled = false;
+                btn.innerHTML = "<span>Descargar PDF Oficial</span>";
+            }
+        }
+    </script>
+</body>
+</html>
