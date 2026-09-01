@@ -33,25 +33,25 @@
             background-color: #ffffff !important;
         }
 
-        /* Fuerza la cohesión de bloques evitando saltos huérfanos o cortes de texto */
+        /* EVITAR CORTES HUÉRFANOS Y MEJORAR PAGINACIÓN */
         .sa-block, .session-card {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
             -webkit-column-break-inside: avoid !important;
             margin-bottom: 12px;
         }
-        
-        /* Clase limpia para desactivar bordes y sombras del contenedor durante la captura */
-        .pdf-render-mode {
+
+        /* REGLAS EXCLUSIVAS PARA LA GENERACIÓN DEL PDF */
+        .pdf-render-root {
+            width: 190mm !important; /* Ancho real útil para A4 (210mm - 20mm márgenes) */
             padding: 0 !important;
             margin: 0 !important;
+            background: #ffffff !important;
             box-shadow: none !important;
             border: none !important;
-            background: #ffffff !important;
         }
 
-        /* Clase especial para omitir elementos específicos durante la generación del PDF */
-        .exclude-from-pdf {
+        .pdf-render-root .no-pdf-target {
             display: none !important;
         }
     </style>
@@ -508,7 +508,7 @@
                     resJson = JSON.parse(rawContent);
 
                 } else {
-                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${apiKey}`, {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -591,23 +591,31 @@
 
         async function exportarPDF() {
             const btn = document.getElementById('btnPdf');
-            const loader = document.getElementById('aiLoading');
-            const placeholder = document.getElementById('placeholderText');
-            const element = document.getElementById('pdfWorkspace');
+            const sourceElement = document.getElementById('saContent');
 
-            if (!element) return;
+            if (!sourceElement || sourceElement.classList.contains('hidden')) return;
 
             btn.disabled = true;
             btn.innerHTML = "<span>Compilando PDF...</span>";
 
-            element.classList.add('pdf-render-mode');
-            if (loader) loader.classList.add('exclude-from-pdf');
-            if (placeholder) placeholder.classList.add('exclude-from-pdf');
+            // 1. Clona únicamente el contenido didáctico (descartando la UI de pantalla)
+            const clone = sourceElement.cloneNode(true);
+            
+            // 2. Encapsula en un contenedor con ancho explícito en milímetros para hoja A4 (190mm)
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pdf-render-root pdf-container';
+            wrapper.appendChild(clone);
+
+            // 3. Posiciona fuera de la vista para evitar parpadeos durante el renderizado
+            wrapper.style.position = 'absolute';
+            wrapper.style.left = '-9999px';
+            wrapper.style.top = '0';
+            document.body.appendChild(wrapper);
 
             const titulo = document.getElementById('pdfTitulo').textContent || 'situacion_de_aprendizaje';
             const nombreArchivo = titulo.toLowerCase().replace(/[^a-z0-9]/g, '_') + '.pdf';
 
-            // SVG seguro del logo para reemplazar imágenes locales sin provocar fallo de seguridad
+            // SVG estático alternativo por si las rutas locales fallan en protocolo file://
             const logoSvgFallback = `
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" class="h-14 w-14 ml-4">
                     <circle cx="50" cy="50" r="45" fill="#f0fdf4" stroke="#059669" stroke-width="3"/>
@@ -616,7 +624,7 @@
                 </svg>`;
 
             const opciones = {
-                margin: [10, 10, 10, 10],
+                margin: [10, 10, 10, 10], // Márgenes físicos en milímetros: arriba, izquierda, abajo, derecha
                 filename: nombreArchivo,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { 
@@ -624,14 +632,14 @@
                     useCORS: true,
                     allowTaint: true,
                     logging: false,
+                    windowWidth: 1024, // Establece un canvas controlado sin depender del zoom de pantalla
                     onclone: (clonedDoc) => {
-                        // Sustituye las imágenes locales por elementos vectoriales durante la captura si se ejecuta mediante file://
                         if (window.location.protocol === 'file:') {
                             const clonedLogo = clonedDoc.getElementById('pdfLogo');
                             if (clonedLogo) {
-                                const wrapper = clonedDoc.createElement('div');
-                                wrapper.innerHTML = logoSvgFallback;
-                                clonedLogo.parentNode.replaceChild(wrapper.firstElementChild, clonedLogo);
+                                const tempSvg = clonedDoc.createElement('div');
+                                tempSvg.innerHTML = logoSvgFallback;
+                                clonedLogo.parentNode.replaceChild(tempSvg.firstElementChild, clonedLogo);
                             }
                         }
                     }
@@ -641,14 +649,13 @@
             };
 
             try {
-                await html2pdf().set(opciones).from(element).save();
+                await html2pdf().set(opciones).from(wrapper).save();
             } catch (error) {
                 alert("Atención al exportar PDF: " + error.message);
                 console.error(error);
             } finally {
-                element.classList.remove('pdf-render-mode');
-                if (loader) loader.classList.remove('exclude-from-pdf');
-                if (placeholder) placeholder.classList.remove('exclude-from-pdf');
+                // Elimina el nodo temporal del DOM
+                document.body.removeChild(wrapper);
                 
                 btn.disabled = false;
                 btn.innerHTML = "<span>Descargar PDF Oficial</span>";
