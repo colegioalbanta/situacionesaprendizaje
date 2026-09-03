@@ -110,9 +110,8 @@
                         <div>
                             <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Proveedor de IA</label>
                             <select id="aiProvider" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500" onchange="actualizarPlaceholderKey()">
-                                <option value="gemini-2.5-flash" selected>Google Gemini 2.5 Flash (Recomendado)</option>
-                                <option value="gemini-2.5-pro">Google Gemini 2.5 Pro</option>
-                                <option value="gemini-1.5-flash-latest">Google Gemini 1.5 Flash (Legacy)</option>
+                                <option value="gemini-flash-latest" selected>Google Gemini Flash (Recomendado, siempre actualizado)</option>
+                                <option value="gemini-pro-latest">Google Gemini Pro (siempre actualizado)</option>
                                 <option value="openai">OpenAI (GPT-4o mini)</option>
                             </select>
                         </div>
@@ -218,7 +217,7 @@
                     <div id="aiLoading" class="hidden absolute inset-0 bg-white/90 backdrop-blur-sm z-50 flex flex-col items-center justify-center text-center p-8 no-print">
                         <div class="animate-spin rounded-full h-14 w-14 border-4 border-slate-200 border-t-indigo-600 mb-4"></div>
                         <h3 class="text-lg font-bold text-slate-800">Redactando contenido con Inteligencia Artificial...</h3>
-                        <p class="text-xs text-slate-500 max-w-sm mt-1">Estructurando la propuesta curricular. Espera unos segundos...</p>
+                        <p id="aiLoadingSubtext" class="text-xs text-slate-500 max-w-sm mt-1">Estructurando la propuesta curricular. Espera unos segundos...</p>
                     </div>
 
                     <div id="placeholderText" class="text-slate-400 text-center py-20 flex flex-col items-center justify-center space-y-4 no-print">
@@ -381,6 +380,107 @@
             }
         }
 
+        // Modelo de respaldo garantizado: si el elegido por el usuario ya no existe
+        // o ha sido retirado por Google, se reintenta automáticamente con este alias
+        // "latest", que Google mantiene siempre apuntando a un modelo Flash vigente.
+        const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
+
+        async function llamarGeminiUnaVez(apiKey, modelo, promptContexto, temperature) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
+            const response = await fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: promptContexto }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        temperature: temperature
+                    }
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                const mensaje = errorData.error?.message || "Servicio no disponible o clave no válida.";
+                const err = new Error(mensaje);
+                err.status = response.status;
+                throw err;
+            }
+
+            const data = await response.json();
+            let rawText = data.candidates[0].content.parts[0].text.trim();
+            rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+            return JSON.parse(rawText);
+        }
+
+        function esErrorDeModeloNoDisponible(err) {
+            const msg = (err.message || '').toLowerCase();
+            return err.status === 404 || msg.includes('not found') || msg.includes('not supported') || msg.includes('is not available');
+        }
+
+        // "limit: 0" significa que ese modelo NO tiene cuota gratuita asignada en
+        // absoluto para esta clave/proyecto: reintentar nunca lo arregla, hay que
+        // cambiar de modelo (normalmente de Pro a Flash, que sí suele tener cuota gratis).
+        function esErrorDeCuotaCero(err) {
+            const msg = (err.message || '').toLowerCase();
+            return /limit:\s*0\b/.test(msg);
+        }
+
+        function esErrorTemporalDeSaturacion(err) {
+            const msg = (err.message || '').toLowerCase();
+            return err.status === 429 || err.status === 503 || msg.includes('high demand') || msg.includes('overloaded') || msg.includes('unavailable') || msg.includes('try again later') || msg.includes('rate limit') || msg.includes('quota');
+        }
+
+        function esperar(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+
+        async function llamarGemini(apiKey, modeloElegido, promptContexto, temperature) {
+            const REINTENTOS_SATURACION = 3;
+            const ESPERA_BASE_MS = 1500;
+
+            let modeloActual = modeloElegido;
+            let ultimoError = null;
+
+            for (let intento = 0; intento <= REINTENTOS_SATURACION; intento++) {
+                try {
+                    return await llamarGeminiUnaVez(apiKey, modeloActual, promptContexto, temperature);
+                } catch (err) {
+                    ultimoError = err;
+
+                    // Si el modelo elegido ya no existe, ha sido retirado, o esta clave
+                    // no tiene cuota gratuita para él (limit: 0), cambiamos una vez al
+                    // alias "latest" (Flash) en lugar de perder tiempo reintentando.
+                    if ((esErrorDeModeloNoDisponible(err) || esErrorDeCuotaCero(err)) && modeloActual !== GEMINI_FALLBACK_MODEL) {
+                        console.warn(`Modelo "${modeloActual}" no disponible o sin cuota. Cambiando a "${GEMINI_FALLBACK_MODEL}"...`);
+                        const subtext = document.getElementById('aiLoadingSubtext');
+                        if (subtext) subtext.textContent = `Ese modelo no está disponible con tu clave. Probando con el modelo Flash gratuito...`;
+                        modeloActual = GEMINI_FALLBACK_MODEL;
+                        continue;
+                    }
+
+                    // Si ya estamos en el modelo de respaldo y sigue sin cuota, no tiene
+                    // sentido seguir reintentando: es un problema de la clave, no temporal.
+                    if (esErrorDeCuotaCero(err)) {
+                        throw new Error(`Error API Gemini: esta clave no tiene cuota gratuita disponible en ningún modelo compatible. Revisa el plan y facturación en https://ai.dev/rate-limit o prueba con otra clave.`);
+                    }
+
+                    // Si es saturación temporal del servicio, esperamos un poco (más
+                    // tiempo cada vez) y reintentamos, hasta agotar los intentos.
+                    if (esErrorTemporalDeSaturacion(err) && intento < REINTENTOS_SATURACION) {
+                        const espera = ESPERA_BASE_MS * (intento + 1);
+                        console.warn(`Servicio saturado. Reintentando en ${espera}ms (intento ${intento + 1}/${REINTENTOS_SATURACION})...`);
+                        const subtext = document.getElementById('aiLoadingSubtext');
+                        if (subtext) subtext.textContent = `El servicio de IA está saturado. Reintentando automáticamente (${intento + 1}/${REINTENTOS_SATURACION})...`;
+                        await esperar(espera);
+                        continue;
+                    }
+
+                    throw new Error(`Error API Gemini: ${err.message}`);
+                }
+            }
+
+            throw new Error(`Error API Gemini: ${ultimoError.message}`);
+        }
+
         async function ejecutarGeneracionIA(apiKey) {
             const loader = document.getElementById('aiLoading');
             loader.classList.remove('hidden');
@@ -445,31 +545,7 @@
                     resJson = JSON.parse(rawContent);
 
                 } else {
-                    // MODELOS OFICIALES ACTIVOS PARA LA API V1BETA
-                    const modelTarget = provider;
-                    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelTarget}:generateContent?key=${apiKey}`;
-
-                    const response = await fetch(url, {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            contents: [{ parts: [{ text: promptContexto }] }],
-                            generationConfig: {
-                                responseMimeType: "application/json",
-                                temperature: 0.7
-                            }
-                        })
-                    });
-
-                    if (!response.ok) {
-                        const errorData = await response.json().catch(() => ({}));
-                        throw new Error(`Error API Gemini: ${errorData.error?.message || "Servicio no disponible o clave no válida."}`);
-                    }
-
-                    const data = await response.json();
-                    let rawText = data.candidates[0].content.parts[0].text.trim();
-                    rawText = rawText.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
-                    resJson = JSON.parse(rawText);
+                    resJson = await llamarGemini(apiKey, provider, promptContexto, 0.7);
                 }
 
                 document.getElementById('pdfJustificacion').textContent = resJson.justificacion;
