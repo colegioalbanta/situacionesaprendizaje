@@ -110,8 +110,9 @@
                         <div>
                             <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1">Proveedor de IA</label>
                             <select id="aiProvider" class="w-full p-2 bg-white border border-slate-300 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-indigo-500" onchange="actualizarPlaceholderKey()">
-                                <option value="gemini-flash-latest" selected>Google Gemini Flash (Recomendado, siempre actualizado)</option>
-                                <option value="gemini-pro-latest">Google Gemini Pro (siempre actualizado)</option>
+                                <option value="gemini-flash-latest" selected>Google Gemini Flash (Recomendado, gratis)</option>
+                                <option value="gemini-flash-lite-latest">Google Gemini Flash-Lite (Más rápido, gratis)</option>
+                                <option value="gemini-pro-latest">Google Gemini Pro (requiere facturación activada)</option>
                                 <option value="openai">OpenAI (GPT-4o mini)</option>
                             </select>
                         </div>
@@ -380,10 +381,12 @@
             }
         }
 
-        // Modelo de respaldo garantizado: si el elegido por el usuario ya no existe
-        // o ha sido retirado por Google, se reintenta automáticamente con este alias
-        // "latest", que Google mantiene siempre apuntando a un modelo Flash vigente.
-        const GEMINI_FALLBACK_MODEL = 'gemini-flash-latest';
+        // Modelos que se probarán, en este orden, si el elegido por el usuario
+        // falla por saturación persistente, por no existir, o por no tener cuota.
+        // Gemini Pro y la familia 2.5 dejaron de tener nivel gratuito, así que como
+        // alternativas usamos solo modelos que sí siguen siendo gratuitos y que usan
+        // "pools" de capacidad separados en los servidores de Google.
+        const GEMINI_MODELOS_ALTERNATIVOS = ['gemini-flash-latest', 'gemini-flash-lite-latest'];
 
         async function llamarGeminiUnaVez(apiKey, modelo, promptContexto, temperature) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelo}:generateContent?key=${apiKey}`;
@@ -434,51 +437,57 @@
         function esperar(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
         async function llamarGemini(apiKey, modeloElegido, promptContexto, temperature) {
-            const REINTENTOS_SATURACION = 3;
-            const ESPERA_BASE_MS = 1500;
+            const REINTENTOS_POR_MODELO = 2; // 3 intentos totales por modelo (1 inicial + 2 reintentos)
+            const ESPERA_BASE_MS = 2000;
 
-            let modeloActual = modeloElegido;
+            // Probamos primero el modelo que eligió el usuario, y si falla de forma
+            // persistente (saturado, retirado o sin cuota), vamos a los alternativos.
+            const candidatos = [modeloElegido, ...GEMINI_MODELOS_ALTERNATIVOS.filter(m => m !== modeloElegido)];
             let ultimoError = null;
 
-            for (let intento = 0; intento <= REINTENTOS_SATURACION; intento++) {
-                try {
-                    return await llamarGeminiUnaVez(apiKey, modeloActual, promptContexto, temperature);
-                } catch (err) {
-                    ultimoError = err;
+            for (let i = 0; i < candidatos.length; i++) {
+                const modelo = candidatos[i];
 
-                    // Si el modelo elegido ya no existe, ha sido retirado, o esta clave
-                    // no tiene cuota gratuita para él (limit: 0), cambiamos una vez al
-                    // alias "latest" (Flash) en lugar de perder tiempo reintentando.
-                    if ((esErrorDeModeloNoDisponible(err) || esErrorDeCuotaCero(err)) && modeloActual !== GEMINI_FALLBACK_MODEL) {
-                        console.warn(`Modelo "${modeloActual}" no disponible o sin cuota. Cambiando a "${GEMINI_FALLBACK_MODEL}"...`);
-                        const subtext = document.getElementById('aiLoadingSubtext');
-                        if (subtext) subtext.textContent = `Ese modelo no está disponible con tu clave. Probando con el modelo Flash gratuito...`;
-                        modeloActual = GEMINI_FALLBACK_MODEL;
-                        continue;
+                for (let intento = 0; intento <= REINTENTOS_POR_MODELO; intento++) {
+                    try {
+                        return await llamarGeminiUnaVez(apiKey, modelo, promptContexto, temperature);
+                    } catch (err) {
+                        ultimoError = err;
+
+                        // Modelo inexistente/retirado o sin cuota: no tiene sentido
+                        // reintentar aquí, pasamos directamente al siguiente modelo.
+                        if (esErrorDeModeloNoDisponible(err) || esErrorDeCuotaCero(err)) {
+                            console.warn(`Modelo "${modelo}" no disponible o sin cuota. Probando siguiente alternativa...`);
+                            break;
+                        }
+
+                        // Saturación temporal: esperamos (cada vez más) y reintentamos
+                        // con el MISMO modelo antes de darlo por perdido.
+                        if (esErrorTemporalDeSaturacion(err) && intento < REINTENTOS_POR_MODELO) {
+                            const espera = ESPERA_BASE_MS * (intento + 1);
+                            console.warn(`"${modelo}" saturado. Reintentando en ${espera}ms (intento ${intento + 1}/${REINTENTOS_POR_MODELO})...`);
+                            const subtext = document.getElementById('aiLoadingSubtext');
+                            if (subtext) subtext.textContent = `El modelo está saturado. Reintentando (${intento + 1}/${REINTENTOS_POR_MODELO})...`;
+                            await esperar(espera);
+                            continue;
+                        }
+
+                        // Agotados los reintentos en este modelo: probamos el siguiente.
+                        console.warn(`"${modelo}" sigue fallando tras los reintentos. Probando siguiente alternativa...`);
+                        break;
                     }
+                }
 
-                    // Si ya estamos en el modelo de respaldo y sigue sin cuota, no tiene
-                    // sentido seguir reintentando: es un problema de la clave, no temporal.
-                    if (esErrorDeCuotaCero(err)) {
-                        throw new Error(`Error API Gemini: esta clave no tiene cuota gratuita disponible en ningún modelo compatible. Revisa el plan y facturación en https://ai.dev/rate-limit o prueba con otra clave.`);
-                    }
-
-                    // Si es saturación temporal del servicio, esperamos un poco (más
-                    // tiempo cada vez) y reintentamos, hasta agotar los intentos.
-                    if (esErrorTemporalDeSaturacion(err) && intento < REINTENTOS_SATURACION) {
-                        const espera = ESPERA_BASE_MS * (intento + 1);
-                        console.warn(`Servicio saturado. Reintentando en ${espera}ms (intento ${intento + 1}/${REINTENTOS_SATURACION})...`);
-                        const subtext = document.getElementById('aiLoadingSubtext');
-                        if (subtext) subtext.textContent = `El servicio de IA está saturado. Reintentando automáticamente (${intento + 1}/${REINTENTOS_SATURACION})...`;
-                        await esperar(espera);
-                        continue;
-                    }
-
-                    throw new Error(`Error API Gemini: ${err.message}`);
+                if (i < candidatos.length - 1) {
+                    const subtext = document.getElementById('aiLoadingSubtext');
+                    if (subtext) subtext.textContent = `Probando con un modelo de IA alternativo...`;
                 }
             }
 
-            throw new Error(`Error API Gemini: ${ultimoError.message}`);
+            const detalle = (ultimoError && esErrorDeCuotaCero(ultimoError))
+                ? 'esta clave no tiene cuota gratuita disponible en ningún modelo compatible. Revisa el plan y facturación en https://ai.dev/rate-limit o prueba con otra clave.'
+                : (ultimoError ? ultimoError.message : 'No se pudo contactar con ningún modelo de Gemini disponible en este momento.');
+            throw new Error(`Error API Gemini: ${detalle}`);
         }
 
         async function ejecutarGeneracionIA(apiKey) {
